@@ -176,7 +176,7 @@ void chiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uin
         SubBytes(state, sbox);
         ShiftRows(state);
         if (round == 1) {
-            printf("Matrice d'état après ShiftRows :\n");
+            printf("\nMatrice d'état après ShiftRows :\n");
             affichage_etat(state);
         }
         MixColumns(state);
@@ -214,6 +214,115 @@ void affiche_s_box(uint8_t sbox[256]) {
     printf("\n");
 }
 
+// Fonction pour initialiser la sbox inverse pour le déchiffrement
+void initialize_aes_inv_sbox(uint8_t inv_sbox[256], uint8_t sbox[256]) {
+    for (int i = 0; i < 256 ; i++) {
+        inv_sbox[sbox[i]] = i ;
+    }
+}
+
+// Fonction InvSubBytes : applique l'inverse de la s-box
+void InvSubBytes(uint8_t state[4][4], uint8_t inv_sbox[256]) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            state[i][j] = inv_sbox[state[i][j]];
+        }
+    }
+}
+
+// Fonction InvShiftRows : décale les lignes dans la direction opposée à ShiftRows
+void InvShiftRows(uint8_t state[4][4]) {
+    uint8_t temp;
+
+    // Décalage inverse de la 2ème ligne d'une position à droite
+    temp = state[1][3];
+    state[1][3] = state[1][2];
+    state[1][2] = state[1][1];
+    state[1][1] = state[1][0];
+    state[1][0] = temp;
+
+    // Décalage inverse de la 3ème ligne de deux positions à droite
+    temp = state[2][0];
+    state[2][0] = state[2][2];
+    state[2][2] = temp;
+    temp = state[2][1];
+    state[2][1] = state[2][3];
+    state[2][3] = temp;
+
+    // Décalage inverse de la 4ème ligne de trois positions à droite
+    temp = state[3][0];
+    state[3][0] = state[3][1];
+    state[3][1] = state[3][2];
+    state[3][2] = state[3][3];
+    state[3][3] = temp;
+}
+
+uint8_t multiplyGalois(uint8_t x, uint8_t multiplier) {
+    switch(multiplier) {
+        case 0: 
+            return 0;
+        case 1:
+            return x;
+        case 2: // La multiplication par 2 revient à effectuer une décalage à gauche (<< 1)
+            if (x < 0x80) { // si le bit de poids fort est à 0
+                return x << 1;
+            } else {
+                return (x << 1) ^ 0x1B; // 0x1B = 00011011
+            }
+        default: // 3
+            return multiplyGalois(x, 2) ^ x;
+    }
+}
+
+// Fonction InvMixColumns : transforme les colonnes à l'aide de la matrice inverse de MixColumns
+void InvMixColumns(uint8_t state[4][4]) {
+    for (int j = 0; j < 4; j++) {
+        uint8_t a[4];
+        for (int i = 0; i < 4; i++) {
+            a[i] = state[i][j];
+        }
+        state[0][j] = multiplyGalois(a[0], 14) ^ multiplyGalois(a[1], 11) ^
+                      multiplyGalois(a[2], 13) ^ multiplyGalois(a[3], 9);
+        state[1][j] = multiplyGalois(a[0], 9) ^ multiplyGalois(a[1], 14) ^
+                      multiplyGalois(a[2], 11) ^ multiplyGalois(a[3], 13);
+        state[2][j] = multiplyGalois(a[0], 13) ^ multiplyGalois(a[1], 9) ^
+                      multiplyGalois(a[2], 14) ^ multiplyGalois(a[3], 11);
+        state[3][j] = multiplyGalois(a[0], 11) ^ multiplyGalois(a[1], 13) ^
+                      multiplyGalois(a[2], 9) ^ multiplyGalois(a[3], 14);
+    }
+}
+
+// Fonction principale de déchiffrement AES-256
+void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uint8_t inv_sbox[256]) {
+    uint8_t state[4][4];
+
+    // Copier l'entrée dans la matrice d'état
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        state[i % 4][i / 4] = input[i];
+    }
+
+    // Étape initiale : AddRoundKey avec la dernière clé
+    AddRoundKey(state, &expandedKeys[14 * 4]);
+
+    // 13 tours principaux inversés
+    for (int round = 13; round > 0; round--) {
+        InvShiftRows(state);
+        InvSubBytes(state, inv_sbox);
+        AddRoundKey(state, &expandedKeys[round * 4]);
+        InvMixColumns(state);
+    }
+
+    // Dernier tour inversé (sans InvMixColumns)
+    InvShiftRows(state);
+    InvSubBytes(state, inv_sbox);
+    AddRoundKey(state, expandedKeys);
+
+    // Copier la matrice d'état dans la sortie
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        output[i] = state[i % 4][i / 4];
+    }
+}
+
 int main() {
     // Générer la S-Box
     uint8_t sbox[256];
@@ -246,16 +355,38 @@ int main() {
         0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d,
         0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34
     };
+
     uint8_t output[AES_BLOCK_SIZE];
+    printf("\nMessage initial :\n");
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%02x ", input[i]);
+    }
+    printf("\n");
 
     chiffrement(input, output, expandedKeys, sbox);
 
     // Affichage du message chiffré
-    printf("\nMessage chiffré :\n");
+    printf("Message chiffré :\n");
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
         printf("%02x ", output[i]);
     }
     printf("\n");
+
+    // Tableau pour stocker le résultat déchiffré
+    uint8_t decrypted[AES_BLOCK_SIZE];
+
+    // Création de la sbox inverse
+    uint8_t inv_sbox[256];
+    initialize_aes_inv_sbox(inv_sbox, sbox);
+
+    dechiffrement(output, decrypted, expandedKeys, inv_sbox);
+
+    printf("\nMessage déchiffré :\n");
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%02x ", decrypted[i]);
+    }
+    printf("\n");
+
 
     return 0;
 }
