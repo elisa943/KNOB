@@ -322,6 +322,29 @@ void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], u
     }
 }
 
+int chiffrement_fichier(const char *inFilename, 
+                        const char *outFilename,
+                        const uint8_t key[32])
+{
+    // 1) Générer la S-Box
+    uint8_t sbox[256];
+    initialize_aes_sbox(sbox);
+
+    // 2) Expansion de la clé AES-256
+    uint32_t expandedKeys[60];
+    KeyExpansion(key, expandedKeys, sbox);
+
+    // 3) Ouvrir le fichier en lecture, et un fichier de sortie en écriture binaire
+    FILE *fin  = fopen(inFilename,  "rb");
+    FILE *fout = fopen(outFilename, "wb");
+    if (!fin || !fout) {
+        printf("Erreur : impossible d'ouvrir les fichiers.\n");
+        if (fin)  fclose(fin);
+        if (fout) fclose(fout);
+        return -1;
+    }
+}
+
 int main() {
     // Générer la S-Box
     uint8_t sbox[256];
