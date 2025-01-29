@@ -121,8 +121,30 @@ uint8_t multiplyGalois(uint8_t x, uint8_t multiplier) {
             } else {
                 return (x << 1) ^ 0x1B; // 0x1B = 00011011
             }
-        default: // 3
+        case 3:
             return multiplyGalois(x, 2) ^ x;
+        case 9: {
+            uint8_t x2 = multiplyGalois(x,2) ;
+            uint8_t x4 = multiplyGalois(x2,2) ;
+            uint8_t x8 = multiplyGalois(x4,2) ;
+            return x8 ^ x; }
+        case 11: {
+            uint8_t x2 = multiplyGalois(x,2) ;
+            uint8_t x4 = multiplyGalois(x2,2) ;
+            uint8_t x8 = multiplyGalois(x4,2) ;
+            return x8 ^ x2 ^ x ; }
+        case 13: {
+            uint8_t x2 = multiplyGalois(x,2) ;
+            uint8_t x4 = multiplyGalois(x2,2) ;
+            uint8_t x8 = multiplyGalois(x4,2) ;
+            return x8 ^ x4 ^ x ; }
+        case 14: {
+            uint8_t x2 = multiplyGalois(x,2) ;
+            uint8_t x4 = multiplyGalois(x2,2) ;
+            uint8_t x8 = multiplyGalois(x4,2) ;
+            return x8 ^ x4 ^ x2 ; }
+        default:
+            return 0;
     }
 }
 
