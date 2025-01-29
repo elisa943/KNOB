@@ -6,8 +6,20 @@
 // Macro pour la taille d'un message (128 bits = 16 octets)
 #define AES_BLOCK_SIZE 16
 
+// Déclaration de la S-Box (statique)
+static uint8_t sbox[256];
+static int sbox_initialized = 0;
+
+// Déclaration de la S-Box inverse (statique)
+static uint8_t inv_sbox[256];
+static int inv_sbox_initialized = 0;
+
 // Fonction pour initialiser la S-Box
-void initialize_aes_sbox(uint8_t sbox[256]) {
+void initialize_aes_sbox() {
+    if (sbox_initialized) {
+        return;
+    }
+
     uint8_t p = 1, q = 1;
 
     /* Loop invariant: p * q == 1 in the Galois field */
@@ -29,6 +41,7 @@ void initialize_aes_sbox(uint8_t sbox[256]) {
 
     /* 0 is a special case since it has no inverse */
     sbox[0] = 0x63;
+    sbox_initialized = 1;
 }
 
 // Rcon (table des constantes de tour)
@@ -44,7 +57,7 @@ uint32_t RotWord(uint32_t word) {
 }
 
 // Fonction SubWord : substitution des octets d'un mot avec la S-Box
-uint32_t SubWord(uint32_t word, uint8_t sbox[256]) {
+uint32_t SubWord(uint32_t word) {
     return (sbox[(word >> 24) & 0xFF] << 24) |
            (sbox[(word >> 16) & 0xFF] << 16) |
            (sbox[(word >> 8) & 0xFF] << 8) |
@@ -52,7 +65,7 @@ uint32_t SubWord(uint32_t word, uint8_t sbox[256]) {
 }
 
 // Fonction d'expansion de clé pour AES-256
-void KeyExpansion(const uint8_t *key, uint32_t *expandedKeys, uint8_t sbox[256]) {
+void KeyExpansion(const uint8_t *key, uint32_t *expandedKeys) {
     // Les 8 premiers mots viennent directement de la clé maîtresse
     for (int i = 0; i < 8; i++) {
         expandedKeys[i] = (key[4 * i] << 24) | (key[4 * i + 1] << 16) |
@@ -64,9 +77,9 @@ void KeyExpansion(const uint8_t *key, uint32_t *expandedKeys, uint8_t sbox[256])
         uint32_t temp = expandedKeys[i - 1];
 
         if (i % 8 == 0) {
-            temp = SubWord(RotWord(temp), sbox) ^ rcon[(i / 8) - 1];
+            temp = SubWord(RotWord(temp)) ^ rcon[(i / 8) - 1];
         } else if (i % 4 == 0) {
-            temp = SubWord(temp, sbox);
+            temp = SubWord(temp);
         }
 
         expandedKeys[i] = expandedKeys[i - 8] ^ temp;
@@ -74,7 +87,7 @@ void KeyExpansion(const uint8_t *key, uint32_t *expandedKeys, uint8_t sbox[256])
 }
 
 // Fonction de substitution des octets : applique la substitution avec la S-Box
-void SubBytes(uint8_t state[4][4], uint8_t sbox[256]) {
+void SubBytes(uint8_t state[4][4]) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             state[i][j] = sbox[state[i][j]];
@@ -184,7 +197,7 @@ void affichage_etat(uint8_t state[4][4]) {
 }
 
 // Fonction principale de chiffrement AES-256
-void chiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uint8_t sbox[256]) {
+void chiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60]) {
     uint8_t state[4][4];
 
     // Copier l'entrée dans la matrice d'état (state)
@@ -197,14 +210,14 @@ void chiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uin
 
     // N-1 tours principaux
     for (int round = 1; round < 14; round++) {
-        SubBytes(state, sbox);
+        SubBytes(state);
         ShiftRows(state);
         MixColumns(state);
         AddRoundKey(state, &expandedKeys[round * 4]);
     }
 
     // Dernier tour (sans MixColumns)
-    SubBytes(state, sbox);
+    SubBytes(state);
     ShiftRows(state);
     AddRoundKey(state, &expandedKeys[14 * 4]);
 
@@ -231,14 +244,18 @@ void affiche_s_box(uint8_t sbox[256]) {
 }
 
 // Fonction pour initialiser la sbox inverse pour le déchiffrement
-void initialize_aes_inv_sbox(uint8_t inv_sbox[256], uint8_t sbox[256]) {
+void initialize_aes_inv_sbox() {
+    if (inv_sbox_initialized) {
+        return;
+    }
     for (int i = 0; i < 256 ; i++) {
         inv_sbox[sbox[i]] = i ;
     }
+    inv_sbox_initialized = 1;
 }
 
 // Fonction InvSubBytes : applique l'inverse de la s-box
-void InvSubBytes(uint8_t state[4][4], uint8_t inv_sbox[256]) {
+void InvSubBytes(uint8_t state[4][4]) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             state[i][j] = inv_sbox[state[i][j]];
@@ -292,7 +309,7 @@ void InvMixColumns(uint8_t state[4][4]) {
 }
 
 // Fonction principale de déchiffrement AES-256
-void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uint8_t inv_sbox[256]) {
+void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60]) {
     uint8_t state[4][4];
 
     // Copier l'entrée dans la matrice d'état
@@ -306,14 +323,14 @@ void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], u
     // 13 tours principaux inversés
     for (int round = 13; round > 0; round--) {
         InvShiftRows(state);
-        InvSubBytes(state, inv_sbox);
+        InvSubBytes(state);
         AddRoundKey(state, &expandedKeys[round * 4]);
         InvMixColumns(state);
     }
 
     // Dernier tour inversé (sans InvMixColumns)
     InvShiftRows(state);
-    InvSubBytes(state, inv_sbox);
+    InvSubBytes(state);
     AddRoundKey(state, expandedKeys);
 
     // Copier la matrice d'état dans la sortie
@@ -323,9 +340,9 @@ void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], u
 }
 
 int main() {
-    // Générer la S-Box
-    uint8_t sbox[256];
-    initialize_aes_sbox(sbox);
+    // Initialisation de la S-Box
+
+    initialize_aes_sbox();
 
     // Exemple de clé maîtresse (256 bits)
     uint8_t key[32] = {
@@ -339,7 +356,7 @@ int main() {
     uint32_t expandedKeys[60];
 
     // Expansion de la clé
-    KeyExpansion(key, expandedKeys, sbox);
+    KeyExpansion(key, expandedKeys);
 
     // Affichage des clés générées
     printf("Clés expansées :\n");
@@ -362,7 +379,7 @@ int main() {
     }
     printf("\n");
 
-    chiffrement(input, output, expandedKeys, sbox);
+    chiffrement(input, output, expandedKeys);
 
     // Affichage du message chiffré
     printf("Message chiffré :\n");
@@ -374,11 +391,10 @@ int main() {
     // Tableau pour stocker le résultat déchiffré
     uint8_t decrypted[AES_BLOCK_SIZE];
 
-    // Création de la sbox inverse
-    uint8_t inv_sbox[256];
-    initialize_aes_inv_sbox(inv_sbox, sbox);
+    // Initialisation de la sbox inverse
+    initialize_aes_inv_sbox();
 
-    dechiffrement(output, decrypted, expandedKeys, inv_sbox);
+    dechiffrement(output, decrypted, expandedKeys);
 
     printf("\nMessage déchiffré :\n");
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
