@@ -109,32 +109,34 @@ void ShiftRows(uint8_t state[4][4]) {
     state[3][0] = temp;
 }
 
-void gmix_column(uint8_t r[4]) {
-    unsigned char a[4];
-    unsigned char b[4];
-    unsigned char c;
-    unsigned char h;
-    /* The array 'a' is simply a copy of the input array 'r'
-     * The array 'b' is each element of the array 'a' multiplied by 2
-     * in Rijndael's Galois field
-     * a[n] ^ b[n] is element n multiplied by 3 in Rijndael's Galois field */ 
-    for (c = 0; c < 4; c++) {
-        a[c] = r[c];
-        /* h is set to 0x01 if the high bit of r[c] is set, 0x00 otherwise */
-        h = r[c] >> 7;    /* logical right shift, thus shifting in zeros */
-        b[c] = r[c] << 1; /* implicitly removes high bit because b[c] is an 8-bit char, so we xor by 0x1b and not 0x11b in the next line */
-        b[c] ^= h * 0x1B; /* Rijndael's Galois field */
+uint8_t multiplyGalois(uint8_t x, uint8_t multiplier) {
+    switch(multiplier) {
+        case 0: 
+            return 0;
+        case 1:
+            return x;
+        case 2: // La multiplication par 2 revient à effectuer une décalage à gauche (<< 1)
+            if (x < 0x80) { // si le bit de poids fort est à 0
+                return x << 1;
+            } else {
+                return (x << 1) ^ 0x1B; // 0x1B = 00011011
+            }
+        default: // 3
+            return multiplyGalois(x, 2) ^ x;
     }
-    r[0] = b[0] ^ a[3] ^ a[2] ^ b[1] ^ a[1]; /* 2 * a0 + a3 + a2 + 3 * a1 */
-    r[1] = b[1] ^ a[0] ^ a[3] ^ b[2] ^ a[2]; /* 2 * a1 + a0 + a3 + 3 * a2 */
-    r[2] = b[2] ^ a[1] ^ a[0] ^ b[3] ^ a[3]; /* 2 * a2 + a1 + a0 + 3 * a3 */
-    r[3] = b[3] ^ a[2] ^ a[1] ^ b[0] ^ a[0]; /* 2 * a3 + a2 + a1 + 3 * a0 */
 }
 
 // Fonction MixColumns : multiplication par la matrice fixe
 void MixColumns(uint8_t state[4][4]) {
-    for (int j = 0; j < 4; j++) { // Parcours des colonnes
-        gmix_column(state[j]);
+    for (int j = 0; j < 4; j++) { // parcoure les colonnes 
+        uint8_t a[4];
+        for (int i = 0; i < 4; i++) {
+            a[i] = state[i][j]; // stocke la ième colonne de state
+        }
+        state[0][j] = multiplyGalois(a[0], 2) ^ multiplyGalois(a[1], 3) ^ a[2]                    ^ a[3];
+        state[1][j] = a[0]                    ^ multiplyGalois(a[1], 2) ^ multiplyGalois(a[2], 3) ^ a[3];
+        state[2][j] = a[0]                    ^ a[1]                    ^ multiplyGalois(a[2], 2) ^ multiplyGalois(a[3], 3);
+        state[3][j] = multiplyGalois(a[0], 3) ^ a[1]                    ^ a[2]                    ^ multiplyGalois(a[3], 2);
     }
 }
 
@@ -175,15 +177,7 @@ void chiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60], uin
     for (int round = 1; round < 14; round++) {
         SubBytes(state, sbox);
         ShiftRows(state);
-        if (round == 1) {
-            printf("\nMatrice d'état après ShiftRows :\n");
-            affichage_etat(state);
-        }
         MixColumns(state);
-        if (round == 1) {
-            printf("Matrice d'état après MixColumns :\n");
-            affichage_etat(state);
-        }
         AddRoundKey(state, &expandedKeys[round * 4]);
     }
 
@@ -255,23 +249,6 @@ void InvShiftRows(uint8_t state[4][4]) {
     state[3][1] = state[3][2];
     state[3][2] = state[3][3];
     state[3][3] = temp;
-}
-
-uint8_t multiplyGalois(uint8_t x, uint8_t multiplier) {
-    switch(multiplier) {
-        case 0: 
-            return 0;
-        case 1:
-            return x;
-        case 2: // La multiplication par 2 revient à effectuer une décalage à gauche (<< 1)
-            if (x < 0x80) { // si le bit de poids fort est à 0
-                return x << 1;
-            } else {
-                return (x << 1) ^ 0x1B; // 0x1B = 00011011
-            }
-        default: // 3
-            return multiplyGalois(x, 2) ^ x;
-    }
 }
 
 // Fonction InvMixColumns : transforme les colonnes à l'aide de la matrice inverse de MixColumns
@@ -357,7 +334,7 @@ int main() {
     };
 
     uint8_t output[AES_BLOCK_SIZE];
-    printf("\nMessage initial :\n");
+    printf("Message initial :\n");
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
         printf("%02x ", input[i]);
     }
