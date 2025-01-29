@@ -339,19 +339,46 @@ void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60]) {
     }
 }
 
+static void printBlockHex(const char *label, const uint8_t *data, size_t len) {
+    printf("%s\n", label);
+    for (size_t i = 0; i < len; i++) {
+        printf("%02X ", data[i]);
+    }
+    printf("\n\n");
+}
+
+// -----------------------------------------------------------------------------
+// 6) Fonction : chiffrement_fichier
+//    - Lit un fichier par blocs de 16 octets
+//    - Affiche bloc en hex avant chiffrement
+//    - Chiffre
+//    - Affiche bloc chiffré en hex
+//    - Déchiffre
+//    - Affiche bloc déchiffré en hex
+//    - Écrit le bloc chiffré dans un autre fichier
+// -----------------------------------------------------------------------------
+
+// Petit helper de "zero-padding" (pour combler si bloc < 16)
+static void zero_padding(uint8_t *block, size_t nbOctetsLus) {
+    // On complète par des 0 la portion non lue
+    for (size_t i = nbOctetsLus; i < AES_BLOCK_SIZE; i++) {
+        block[i] = 0x00;
+    }
+}
+
 int chiffrement_fichier(const char *inFilename, 
                         const char *outFilename,
                         const uint8_t key[32])
 {
-    // 1) Générer la S-Box
-    uint8_t sbox[256];
-    initialize_aes_sbox(sbox);
+    // 1) Initialiser les S-Box statiques (si pas déjà fait)
+    initialize_aes_sbox();      // Remplit sbox[]
+    initialize_aes_inv_sbox();  // Remplit inv_sbox[]
 
     // 2) Expansion de la clé AES-256
     uint32_t expandedKeys[60];
-    KeyExpansion(key, expandedKeys, sbox);
+    KeyExpansion(key, expandedKeys);
 
-    // 3) Ouvrir le fichier en lecture, et un fichier de sortie en écriture binaire
+    // 3) Ouvrir les fichiers
     FILE *fin  = fopen(inFilename,  "rb");
     FILE *fout = fopen(outFilename, "wb");
     if (!fin || !fout) {
@@ -360,13 +387,65 @@ int chiffrement_fichier(const char *inFilename,
         if (fout) fclose(fout);
         return -1;
     }
+
+    // 4) Lecture / chiffrement bloc par bloc (16 octets)
+    uint8_t blocIn[AES_BLOCK_SIZE];
+    uint8_t blocOut[AES_BLOCK_SIZE];
+    uint8_t blocDec[AES_BLOCK_SIZE];
+
+    size_t nbLus = 0;
+    while (1) {
+        nbLus = fread(blocIn, 1, AES_BLOCK_SIZE, fin);
+
+        if (nbLus < AES_BLOCK_SIZE) {
+            // Fin de fichier ou erreur
+            if (feof(fin)) {
+                // On a lu un dernier bloc partiel => zero padding
+                zero_padding(blocIn, nbLus);
+
+                // Affiche bloc en hexa (plaintext paddé)
+                printBlockHex("Bloc AVANT chiffrement (paddé) :", blocIn, AES_BLOCK_SIZE);
+
+                // On chiffre
+                chiffrement(blocIn, blocOut, expandedKeys);
+
+                // Affiche bloc chiffré
+                printBlockHex("Bloc CHIFFRÉ :", blocOut, AES_BLOCK_SIZE);
+
+                // On déchiffre pour démonstration
+                dechiffrement(blocOut, blocDec, expandedKeys);
+                printBlockHex("Bloc DÉCHIFFRÉ :", blocDec, AES_BLOCK_SIZE);
+
+                // On écrit le bloc chiffré
+                fwrite(blocOut, 1, AES_BLOCK_SIZE, fout);
+            } else {
+                printf("Erreur de lecture du fichier.\n");
+            }
+            break; // sortie de boucle
+        } else {
+            // Bloc complet (16 octets)
+            printBlockHex("Bloc AVANT chiffrement :", blocIn, AES_BLOCK_SIZE);
+
+            chiffrement(blocIn, blocOut, expandedKeys);
+
+            printBlockHex("Bloc CHIFFRÉ :", blocOut, AES_BLOCK_SIZE);
+
+            dechiffrement(blocOut, blocDec, expandedKeys);
+            printBlockHex("Bloc DÉCHIFFRÉ :", blocDec, AES_BLOCK_SIZE);
+
+            // Écrit le bloc chiffré dans le fichier de sortie
+            fwrite(blocOut, 1, AES_BLOCK_SIZE, fout);
+        }
+    }
+
+    fclose(fin);
+    fclose(fout);
+
+    printf("\nChiffrement terminé : %s => %s\n", inFilename, outFilename);
+    return 0;
 }
 
 int main() {
-    // Initialisation de la S-Box
-
-    initialize_aes_sbox();
-
     // Exemple de clé maîtresse (256 bits)
     uint8_t key[32] = {
         0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe,
@@ -375,56 +454,7 @@ int main() {
         0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
     };
 
-    // Tableau pour stocker les clés expansées
-    uint32_t expandedKeys[60];
-
-    // Expansion de la clé
-    KeyExpansion(key, expandedKeys);
-
-    // Affichage des clés générées
-    printf("Clés expansées :\n");
-    for (int i = 0; i < 60; i++) {
-        printf("W[%d] = %08x\n", i, expandedKeys[i]);
-    }
-
-    printf("\n");
-
-    // Test du chiffrement AES-256
-    uint8_t input[AES_BLOCK_SIZE] = {
-        0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d,
-        0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34
-    };
-
-    uint8_t output[AES_BLOCK_SIZE];
-    printf("Message initial :\n");
-    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-        printf("%02x ", input[i]);
-    }
-    printf("\n");
-
-    chiffrement(input, output, expandedKeys);
-
-    // Affichage du message chiffré
-    printf("Message chiffré :\n");
-    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-        printf("%02x ", output[i]);
-    }
-    printf("\n");
-
-    // Tableau pour stocker le résultat déchiffré
-    uint8_t decrypted[AES_BLOCK_SIZE];
-
-    // Initialisation de la sbox inverse
-    initialize_aes_inv_sbox();
-
-    dechiffrement(output, decrypted, expandedKeys);
-
-    printf("\nMessage déchiffré :\n");
-    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-        printf("%02x ", decrypted[i]);
-    }
-    printf("\n");
-
+    chiffrement_fichier("test.txt", "test_chiffre.bin", key);
 
     return 0;
 }
