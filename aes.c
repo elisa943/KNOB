@@ -339,14 +339,6 @@ void dechiffrement(uint8_t *input, uint8_t *output, uint32_t expandedKeys[60]) {
     }
 }
 
-static void printBlockHex(const char *label, const uint8_t *data, size_t len) {
-    printf("%s\n", label);
-    for (size_t i = 0; i < len; i++) {
-        printf("%02X ", data[i]);
-    }
-    printf("\n\n");
-}
-
 // -----------------------------------------------------------------------------
 // 6) Fonction : chiffrement_fichier
 //    - Lit un fichier par blocs de 16 octets
@@ -370,11 +362,11 @@ int chiffrement_fichier(const char *inFilename,
                         const char *outFilename,
                         const uint8_t key[32])
 {
-    // 1) Initialiser les S-Box statiques (si pas déjà fait)
-    initialize_aes_sbox();      // Remplit sbox[]
-    initialize_aes_inv_sbox();  // Remplit inv_sbox[]
+    // 1) Initialiser la S-Box et l'inverse (si pas déjà fait)
+    initialize_aes_sbox();
+    initialize_aes_inv_sbox();
 
-    // 2) Expansion de la clé AES-256
+    // 2) Faire l'expansion de la clé
     uint32_t expandedKeys[60];
     KeyExpansion(key, expandedKeys);
 
@@ -388,65 +380,125 @@ int chiffrement_fichier(const char *inFilename,
         return -1;
     }
 
-    // 4) Lecture / chiffrement bloc par bloc (16 octets)
-    uint8_t blocIn[AES_BLOCK_SIZE];
-    uint8_t blocOut[AES_BLOCK_SIZE];
-    uint8_t blocDec[AES_BLOCK_SIZE];
+    // 4) Lire / chiffrer bloc par bloc
+    uint8_t blocIn[16];
+    uint8_t blocOut[16];
+    size_t nbLus;
 
-    size_t nbLus = 0;
     while (1) {
-        nbLus = fread(blocIn, 1, AES_BLOCK_SIZE, fin);
-
-        if (nbLus < AES_BLOCK_SIZE) {
-            // Fin de fichier ou erreur
+        nbLus = fread(blocIn, 1, 16, fin);
+        if (nbLus < 16) {
             if (feof(fin)) {
-                // On a lu un dernier bloc partiel => zero padding
+                // On est arrivé à la fin => on pad le dernier bloc
                 zero_padding(blocIn, nbLus);
-
-                // Affiche bloc en hexa (plaintext paddé)
-                printBlockHex("Bloc AVANT chiffrement (paddé) :", blocIn, AES_BLOCK_SIZE);
-
-                // On chiffre
+                // Chiffrement du bloc
                 chiffrement(blocIn, blocOut, expandedKeys);
-
-                // Affiche bloc chiffré
-                printBlockHex("Bloc CHIFFRÉ :", blocOut, AES_BLOCK_SIZE);
-
-                // On déchiffre pour démonstration
-                dechiffrement(blocOut, blocDec, expandedKeys);
-                printBlockHex("Bloc DÉCHIFFRÉ :", blocDec, AES_BLOCK_SIZE);
-
-                // On écrit le bloc chiffré
-                fwrite(blocOut, 1, AES_BLOCK_SIZE, fout);
+                fwrite(blocOut, 1, 16, fout);
             } else {
-                printf("Erreur de lecture du fichier.\n");
+                // Erreur de lecture
+                printf("Erreur de lecture.\n");
             }
-            break; // sortie de boucle
+            break; 
         } else {
-            // Bloc complet (16 octets)
-            printBlockHex("Bloc AVANT chiffrement :", blocIn, AES_BLOCK_SIZE);
-
+            // Bloc complet de 16 octets
             chiffrement(blocIn, blocOut, expandedKeys);
-
-            printBlockHex("Bloc CHIFFRÉ :", blocOut, AES_BLOCK_SIZE);
-
-            dechiffrement(blocOut, blocDec, expandedKeys);
-            printBlockHex("Bloc DÉCHIFFRÉ :", blocDec, AES_BLOCK_SIZE);
-
-            // Écrit le bloc chiffré dans le fichier de sortie
-            fwrite(blocOut, 1, AES_BLOCK_SIZE, fout);
+            fwrite(blocOut, 1, 16, fout);
         }
     }
 
     fclose(fin);
     fclose(fout);
 
-    printf("\nChiffrement terminé : %s => %s\n", inFilename, outFilename);
+    printf("Chiffrement terminé : %s => %s\n", inFilename, outFilename);
     return 0;
 }
 
-int main() {
-    // Exemple de clé maîtresse (256 bits)
+int dechiffrement_fichier(const char *inFilename, 
+                          const char *outFilename,
+                          const uint8_t key[32])
+{
+    initialize_aes_sbox();
+    initialize_aes_inv_sbox();
+
+    // 2) Expansion de clé
+    uint32_t expandedKeys[60];
+    KeyExpansion(key, expandedKeys);
+
+    FILE *fin  = fopen(inFilename,  "rb");
+    FILE *fout = fopen(outFilename, "wb");
+    if (!fin || !fout) {
+        printf("Erreur : impossible d'ouvrir les fichiers.\n");
+        if (fin)  fclose(fin);
+        if (fout) fclose(fout);
+        return -1;
+    }
+
+    uint8_t blocIn[16];
+    uint8_t blocOut[16];
+    size_t nbLus;
+
+    while ((nbLus = fread(blocIn, 1, 16, fin)) == 16) {
+        // nbLus devrait toujours valoir 16 si c'est un fichier chiffré multiple de 16
+        dechiffrement(blocIn, blocOut, expandedKeys);
+        fwrite(blocOut, 1, 16, fout);
+    }
+
+    // Si on arrive ici, qu'on ait lu moins de 16 octets 
+    // signifie soit corruption, soit fin inattendue, etc.
+    if (!feof(fin)) {
+        printf("Attention : le fichier %s n'est pas un multiple de 16 octets ?\n", inFilename);
+    }
+
+    fclose(fin);
+    fclose(fout);
+
+    printf("Déchiffrement terminé : %s => %s\n", inFilename, outFilename);
+    return 0;
+}
+
+void affiche_fichier_hex(const char *filename, const char *titre) {
+    FILE *f = fopen(filename, "rb");
+    if (!f) {
+        printf("Impossible d'ouvrir %s pour l'affichage.\n", filename);
+        return;
+    }
+    printf("\n--- %s (%s) ---\n", titre, filename);
+
+    unsigned char buffer[16];
+    size_t n;
+    size_t offset = 0;
+
+    while ((n = fread(buffer, 1, sizeof(buffer), f)) > 0) {
+        // Affiche offset en hexa
+        printf("%08zx  ", offset);
+        offset += n;
+
+        // Affiche n octets en hexa
+        for (size_t i = 0; i < n; i++) {
+            printf("%02X ", buffer[i]);
+        }
+        // Si on veut un alignement "type hexdump", on peut rajouter des espaces
+        for (size_t i = n; i < sizeof(buffer); i++) {
+            printf("   ");
+        }
+
+        // Affiche en ASCII (optionnel)
+        printf(" | ");
+        for (size_t i = 0; i < n; i++) {
+            unsigned char c = buffer[i];
+            if (c >= 32 && c < 127) {
+                printf("%c", c);
+            } else {
+                printf(".");
+            }
+        }
+        printf("\n");
+    }
+    fclose(f);
+    printf("------------------------\n\n");
+}
+
+int main(void) {
     uint8_t key[32] = {
         0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe,
         0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
@@ -454,7 +506,31 @@ int main() {
         0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
     };
 
-    chiffrement_fichier("test.txt", "test_chiffre.bin", key);
+    // Fichiers de test
+    const char *fichier_original   = "test.txt";
+    const char *fichier_chiffre    = "test_chiffre.bin";
+    const char *fichier_dechiffre  = "test_dechiffre.txt";
+
+    // 1) Affichage du fichier ORIGINAL
+    affiche_fichier_hex(fichier_original, "Fichier original");
+
+    // 2) Chiffrement du fichier
+    if (chiffrement_fichier(fichier_original, fichier_chiffre, key) != 0) {
+        printf("Echec du chiffrement.\n");
+        return 1;
+    }
+
+    // 3) Affichage du fichier CHIFFRÉ
+    affiche_fichier_hex(fichier_chiffre, "Fichier chiffré");
+
+    // 4) Déchiffrement du fichier chiffré
+    if (dechiffrement_fichier(fichier_chiffre, fichier_dechiffre, key) != 0) {
+        printf("Echec du déchiffrement.\n");
+        return 1;
+    }
+
+    // 5) Affichage du fichier DÉCHIFFRÉ
+    affiche_fichier_hex(fichier_dechiffre, "Fichier déchiffré");
 
     return 0;
 }
