@@ -33,3 +33,9 @@ make
 ./rsa_encrypt file.txt
 ./rsa_decrypt
 ```
+
+## Générer une clé aléatoire en hexadécimal de 32 octets (256 bits) dans un fichier cle.pem
+
+```
+openssl rand -hex 32 > cle.pem
+```
