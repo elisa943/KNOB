@@ -15,7 +15,7 @@ brew install openssl             # macOS (via Homebrew)
 openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:4096
 ```
 
-3. Génération de la clé publique RSA
+3. Génération de la clé publique RSA (à partir de la clé privée)
 
 ```
 openssl rsa -in private.pem -pubout -out public.pem
