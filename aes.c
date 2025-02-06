@@ -5,6 +5,8 @@
 #define ROTL8(x, shift) ((uint8_t) ((x) << (shift)) | ((x) >> (8 - (shift))))
 // Macro pour la taille d'un message (128 bits = 16 octets)
 #define AES_BLOCK_SIZE 16
+// Macro pour la taille de la clé AES-256 (256 bits = 32 octets)
+#define AES_KEY_SIZE 32
 
 // Déclaration de la S-Box (statique)
 static uint8_t sbox[256];
@@ -194,6 +196,30 @@ void affichage_etat(uint8_t state[4][4]) {
         printf("\n");
     }
     printf("\n");
+}
+
+// Fonction pour lire une clé AES-256 depuis un fichier .pem
+int lire_cle_aes(const char *filename, uint8_t *key) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("Erreur d'ouverture du fichier clé");
+        return -1;
+    }
+
+    char hexKey[AES_KEY_SIZE * 2 + 1]; // 32 octets * 2 caractères hex + '\0'
+    if (fgets(hexKey, sizeof(hexKey), file) == NULL) {
+        perror("Erreur de lecture du fichier clé");
+        fclose(file);
+        return -1;
+    }
+    fclose(file);
+
+    // Convertir la clé hexadécimale en tableau de bytes
+    for (int i = 0; i < AES_KEY_SIZE; i++) {
+        sscanf(hexKey + (i * 2), "%2hhx", &key[i]);
+    }
+
+    return 0;
 }
 
 // Fonction principale de chiffrement AES-256
@@ -499,12 +525,12 @@ void affiche_fichier_hex(const char *filename, const char *titre) {
 }
 
 int main(void) {
-    uint8_t key[32] = {
-        0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe,
-        0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
-        0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7,
-        0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
-    };
+    uint8_t key[32]; // Clé AES-256
+
+    if (lire_cle_aes("cle_aes.pem", key) != 0) {
+        printf("Erreur : Impossible de charger la clé AES.\n");
+        return 1;
+    }
 
     // Fichiers de test
     const char *fichier_original   = "test.txt";

@@ -14,10 +14,11 @@ rsa_decrypt: rsa_decrypt.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 aes: aes.o
+	openssl rand -hex 32 > cle_aes.pem
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OBJ) $(TARGETS) encrypted.bin
+	rm -rf $(OBJ) $(TARGETS) *.bin
