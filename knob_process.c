@@ -4,28 +4,36 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-// Constantes
 #define BLOCK_SIZE 1024  // Taille de bloc en octets (1 Ko)
 #define KEY_SIZE 32      // Taille de clé (256 bits)
 
+// Déclaration de la clé statique FK
+static unsigned char fk[KEY_SIZE];
+
+// Structures de données
 typedef struct {
     unsigned char *data;
     size_t size;
 } Block;
 
-// --- Fonctions de chiffrement et manipulation des blocs ---
+// --- Fonctions ---
 
-// 1. Générer une clé de fichier (FK)
-void generate_file_key(unsigned char *key) {
-    if (!RAND_bytes(key, KEY_SIZE)) {
-        fprintf(stderr, "Erreur : génération de la clé aléatoire échouée\n");
-        exit(EXIT_FAILURE);
+// 1. Initialiser la clé de fichier (FK)
+void initialize_file_key() {
+    static int initialized = 0;
+
+    if (!initialized) {
+        if (!RAND_bytes(fk, KEY_SIZE)) {
+            fprintf(stderr, "Erreur : génération de la clé aléatoire échouée\n");
+            exit(EXIT_FAILURE);
+        }
+        initialized = 1;
     }
 }
 
 // 2. Chiffrer le fichier avec AES-256 en mode CBC
-int encrypt_file(const char *input_file, const char *output_file, unsigned char *key) {
-    unsigned char iv[KEY_SIZE];  // Vecteur d'initialisation
+int encrypt_file(const char *input_file, const char *output_file) {
+    unsigned char iv[KEY_SIZE];  // Vecteur d'initialisation (IV)
     RAND_bytes(iv, KEY_SIZE);
 
     FILE *in = fopen(input_file, "rb");
@@ -42,22 +50,27 @@ int encrypt_file(const char *input_file, const char *output_file, unsigned char 
         return -1;
     }
 
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+    // Initialisation du chiffrement
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, fk, iv);
 
     unsigned char buffer[BLOCK_SIZE];
     unsigned char ciphertext[BLOCK_SIZE + EVP_MAX_BLOCK_LENGTH];
     int len, ciphertext_len;
 
-    fwrite(iv, 1, KEY_SIZE, out);  // Écrire le vecteur d'initialisation dans le fichier de sortie
+    // Écrire le vecteur d'initialisation dans le fichier de sortie
+    fwrite(iv, 1, KEY_SIZE, out);
 
+    // Lire et chiffrer les blocs du fichier d'entrée
     while ((len = fread(buffer, 1, BLOCK_SIZE, in)) > 0) {
         EVP_EncryptUpdate(ctx, ciphertext, &ciphertext_len, buffer, len);
         fwrite(ciphertext, 1, ciphertext_len, out);
     }
 
+    // Finaliser le chiffrement
     EVP_EncryptFinal_ex(ctx, ciphertext, &ciphertext_len);
     fwrite(ciphertext, 1, ciphertext_len, out);
 
+    // Libération des ressources
     EVP_CIPHER_CTX_free(ctx);
     fclose(in);
     fclose(out);
@@ -98,28 +111,34 @@ void identify_super_blocks(Block *blocks, int num_blocks, int *super_block_indic
     }
 }
 
-// --- Fonction principale pour exécuter les étapes ---
-int main() {
-    unsigned char fk[KEY_SIZE];  // Clé de chiffrement du fichier
-    generate_file_key(fk);
 
-    // Étape 1 : Chiffrement initial du fichier
-    if (encrypt_file("input.txt", "ciphertext.bin", fk) != 0) {
+// --- Fonction principale ---
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage : %s <input_file> <output_file>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    // Initialiser la clé FK une seule fois
+    initialize_file_key();
+
+    // Étape 1 : Chiffrement du fichier d'entrée
+    if (encrypt_file(argv[1], argv[2]) != 0) {
         fprintf(stderr, "Erreur lors du chiffrement du fichier\n");
         return EXIT_FAILURE;
     }
 
     // Étape 2 : Division en blocs
     int num_blocks;
-    Block *blocks = divide_into_blocks("ciphertext.bin", &num_blocks);
+    Block *blocks = divide_into_blocks(argv[2], &num_blocks);
 
     if (blocks == NULL) {
         fprintf(stderr, "Erreur lors de la division en blocs\n");
         return EXIT_FAILURE;
     }
 
-    // Étape 4 : Identification des super blocs
-    int super_block_indices[2];  // Exemple : on sélectionne deux super blocs
+    // Étape 3 : Identification des super blocs
+    int super_block_indices[2];  // Exemple avec deux super blocs
     identify_super_blocks(blocks, num_blocks, super_block_indices, 2);
 
     // Affichage des super blocs sélectionnés
@@ -133,3 +152,4 @@ int main() {
 
     return EXIT_SUCCESS;
 }
+
