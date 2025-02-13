@@ -3,6 +3,7 @@ import sys
 import random
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+from xor_metadata import compute_xor_metadata
 
 # Constantes
 BLOCK_SIZE = 1024  # Taille de bloc en octets (1 Ko)
@@ -88,8 +89,28 @@ def main():
     # Étape 2 : Division en blocs
     blocks = divide_into_blocks(output_file)
 
-    # Étape 3 : Identification des super blocs
+    # Étape 3 : Formation de metaFK
+    metaFK = compute_xor_metadata(blocks, file_key)
+
+    # Sauvegarde de metaFK
+    with open("metaFK.bin", "wb") as f:
+        f.write(metaFK)
+    
+    print("MetaFK généré et stocké dans metaFK.bin")
+
+    # Étape 4 : Identification des super blocs
     super_block_indices = identify_super_blocks(blocks, 2)
+    super_blocks = [blocks[i] for i in super_block_indices]
+
+    # Étape 5 : Formation de metaSK
+    sk_key = get_random_bytes(KEY_SIZE)  # Simulation d'une clé SK (doit être gérée autrement dans l'intégration finale)
+    metaSK = compute_xor_metadata(blocks, sk_key, additional_elements=super_blocks)
+
+    # Sauvegarde de metaSK
+    with open("metaSK.bin", "wb") as f:
+        f.write(metaSK)
+
+    print("MetaSK généré et stocké dans metaSK.bin")
 
     # Affichage des super blocs sélectionnés
     print("Super blocs sélectionnés :", super_block_indices)
