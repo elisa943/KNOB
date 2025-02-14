@@ -47,7 +47,6 @@ def encrypt_file(input_file, output_file):
             encrypted_block = cipher.encrypt(block)
             outfile.write(encrypted_block)
 
-
 def divide_into_blocks(ciphertext_file):
     """Divise le fichier chiffré en blocs de taille fixe."""
     blocks = []
@@ -69,6 +68,24 @@ def identify_super_blocks(blocks, num_super_blocks):
 
     return random.sample(range(len(blocks)), num_super_blocks)
 
+def encrypt_super_blocks(super_blocks, sk_key):
+    """Chiffre les super blocs sélectionnés avec AES-256-CBC."""
+    encrypted_super_blocks = []
+    ivs = []
+
+    for block in super_blocks:
+        iv = get_random_bytes(16)  # IV unique pour chaque super bloc
+        cipher = AES.new(sk_key, AES.MODE_CBC, iv)
+        
+        # Padding si nécessaire
+        if len(block) % 16 != 0:
+            padding_length = 16 - (len(block) % 16)
+            block += bytes([padding_length] * padding_length)
+
+        encrypted_block = cipher.encrypt(block)
+        encrypted_super_blocks.append((iv, encrypted_block))
+
+    return encrypted_super_blocks
 
 # --- Fonction principale ---
 def main():
@@ -102,15 +119,16 @@ def main():
     super_block_indices = identify_super_blocks(blocks, 2)
     super_blocks = [blocks[i] for i in super_block_indices]
 
-    # Étape 5 : Formation de metaSK
-    sk_key = get_random_bytes(KEY_SIZE)  # Simulation d'une clé SK (doit être gérée autrement dans l'intégration finale)
-    metaSK = compute_xor_metadata(blocks, sk_key, additional_elements=super_blocks)
+    # Étape 5 : Chiffrement des super blocs avec une clé SK
+    sk_key = get_random_bytes(KEY_SIZE)  # Clé SK générée (devrait être stockée de manière sécurisée)
+    encrypted_super_blocks = encrypt_super_blocks(super_blocks, sk_key)
 
-    # Sauvegarde de metaSK
+    # Sauvegarde de metaSK avec les IV
     with open("metaSK.bin", "wb") as f:
-        f.write(metaSK)
+        for iv, encrypted_block in encrypted_super_blocks:
+            f.write(iv + encrypted_block)
 
-    print("MetaSK généré et stocké dans metaSK.bin")
+    print("MetaSK (super blocs chiffrés) généré et stocké dans metaSK.bin")
 
     # Affichage des super blocs sélectionnés
     print("Super blocs sélectionnés :", super_block_indices)
