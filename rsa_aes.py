@@ -6,32 +6,23 @@ from cryptography.hazmat.primitives import hashes
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
-def aes_decrypt_file(input_file, output_file, key):
-    """Déchiffre un fichier avec AES-256 en mode CBC."""
-    with open(input_file, 'rb') as infile:
-        # Lire le vecteur d'initialisation (IV) de 16 octets
-        iv = infile.read(16)
-        
-        # Initialiser le déchiffreur
-        cipher = AES.new(key, AES.MODE_CBC, iv)
-        
-        with open(output_file, 'wb') as outfile:
-            while True:
-                # Lire un bloc de données chiffrées
-                encrypted_block = infile.read(BLOCK_SIZE)
-                if len(encrypted_block) == 0:
-                    break
-                
-                # Déchiffrer le bloc
-                decrypted_block = cipher.decrypt(encrypted_block)
-                
-                # Si c'est le dernier bloc, enlever le padding
-                if len(encrypted_block) < BLOCK_SIZE:
-                    padding_length = decrypted_block[-1]
-                    decrypted_block = decrypted_block[:-padding_length]
-                
-                # Écrire le bloc déchiffré dans le fichier de sortie
-                outfile.write(decrypted_block)
+def aes_decrypt(encrypted_data, key):
+    """Déchiffre des données avec AES-256 en mode CBC et retourne les données déchiffrées."""
+    # Lire le vecteur d'initialisation (IV) de 16 octets
+    iv = encrypted_data[:16]
+    encrypted_content = encrypted_data[16:]
+    
+    # Initialiser le déchiffreur
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    
+    # Déchiffrer les données
+    decrypted_data = cipher.decrypt(encrypted_content)
+    
+    # Enlever le padding PKCS7
+    padding_length = decrypted_data[-1]
+    decrypted_data = decrypted_data[:-padding_length]
+    
+    return decrypted_data
 
 def load_private_key(private_key_path):
     """Charge une clé privée depuis un fichier PEM."""
@@ -42,12 +33,9 @@ def load_private_key(private_key_path):
         )
     return private_key
 
-def rsa_decrypt(private_key, input_file, output_file):
-    """Déchiffre le fichier d'entrée et écrit le résultat dans le fichier de sortie."""
-    with open(input_file, "rb") as f:
-        encrypted_data = f.read()
-    
-    decrypted_data = private_key.decrypt(
+def rsa_decrypt(private_key, encrypted_data):
+    """Déchiffre les données RSA et retourne les données déchiffrées."""
+    return private_key.decrypt(
         encrypted_data,
         padding.OAEP(
             mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -55,9 +43,6 @@ def rsa_decrypt(private_key, input_file, output_file):
             label=None
         )
     )
-    
-    with open(output_file, "wb") as f:
-        f.write(decrypted_data)
 
 def rsa_decryption(private_key_path, input_file):
     if not os.path.exists(private_key_path):
