@@ -60,13 +60,25 @@ def divide_into_blocks(ciphertext_file):
 
     return blocks
 
+
+
 def identify_super_blocks(blocks, num_super_blocks):
-    """Sélectionne un nombre donné de super blocs de manière aléatoire."""
-    if num_super_blocks > len(blocks):
-        print(f"Erreur : Impossible de sélectionner {num_super_blocks} super blocs parmi {len(blocks)} blocs.")
+    """Sélectionne un nombre donné de super blocs de manière plus aléatoire."""
+    num_blocks = len(blocks)
+    
+    if num_super_blocks > num_blocks:
+        print(f"Erreur : Impossible de sélectionner {num_super_blocks} super blocs parmi {num_blocks} blocs.")
         sys.exit(1)
 
-    return random.sample(range(len(blocks)), num_super_blocks)
+    # Générer tous les indices des blocs
+    indices = list(range(num_blocks))
+    
+    # Mélanger les indices
+    random.shuffle(indices)
+    
+    # Sélectionner les premiers `num_super_blocks` après mélange
+    return indices[:num_super_blocks]
+
 
 def encrypt_super_blocks(super_blocks, sk_key):
     """Chiffre les super blocs sélectionnés avec AES-256-CBC."""
