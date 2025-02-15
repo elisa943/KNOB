@@ -120,7 +120,7 @@ def encrypt_superblock_index(indices, key) :
 
     encrypted_index = cipher.encrypt(indices_bytes)
 
-    return encrypted_index   
+    return iv + encrypted_index   
 
 # --- Fonction principale ---
 def main():
