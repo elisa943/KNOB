@@ -76,24 +76,32 @@ def identify_super_blocks(blocks, num_super_blocks):
     # Sélectionner les premiers `num_super_blocks` après mélange
     return indices[:num_super_blocks]
 
-def encrypt_super_blocks(super_blocks, key):
-    """Chiffre les super blocs sélectionnés avec AES-256-CBC."""
+def encrypt_super_blocks(super_blocks, key, super_block_indices, output_file):
+    """Chiffre les super blocs sélectionnés avec AES-256-CBC et met à jour le fichier."""
     encrypted_super_blocks = []
 
-    for block in super_blocks:
-        iv = get_random_bytes(16)  # IV unique pour chaque super bloc
-        cipher = AES.new(key, AES.MODE_CBC, iv)
-        
-        # Padding si nécessaire
-        if len(block) % 16 != 0:
-            padding_length = 16 - (len(block) % 16)
-            block += bytes([padding_length] * padding_length)
+    # Lire le fichier chiffré en mode lecture/écriture binaire
+    with open(output_file, "r+b") as f:
+        for index, block in zip(super_block_indices, super_blocks):
+            iv = get_random_bytes(16)  # IV unique pour chaque super bloc
+            cipher = AES.new(key, AES.MODE_CBC, iv)
 
-        encrypted_block = cipher.encrypt(block)
-        encrypted_super_blocks.append((iv, encrypted_block))
-        print("Super bloc chiffré : ", encrypted_block[:16])
+            # Padding si nécessaire
+            if len(block) % 16 != 0:
+                padding_length = 16 - (len(block) % 16)
+                block += bytes([padding_length] * padding_length)
+
+            encrypted_block = cipher.encrypt(block)
+            encrypted_super_blocks.append((iv, encrypted_block))
+
+            # 🔥 Mise à jour du fichier `output_file` avec les super-blocs chiffrés
+            f.seek(index * BLOCK_SIZE)  # Se placer au bon emplacement du super-bloc
+            f.write(iv + encrypted_block)  # Écrire l'IV suivi du bloc chiffré
+
+            print(f"✅ Super bloc {index} chiffré et réécrit dans `output_file`.")
 
     return encrypted_super_blocks
+
 
 def adaptation_indices(num_blocks, super_block_indices) :
     indices = ['0'] * num_blocks
@@ -157,7 +165,8 @@ def main():
     with open("gk_key", "rb") as f:
         gk_key = f.read()
 
-    encrypted_super_blocks = encrypt_super_blocks(super_blocks, gk_key)
+    encrypted_super_blocks = encrypt_super_blocks(super_blocks, gk_key, super_block_indices, output_file)
+
 
     # Sauvegarde de metaSK avec les IV
     with open("metaSK.bin", "wb") as f:
