@@ -98,7 +98,7 @@ def encrypt_super_blocks(super_blocks, key, super_block_indices, output_file):
             f.seek(index * BLOCK_SIZE)  # Se placer au bon emplacement du super-bloc
             f.write(iv + encrypted_block)  # Écrire l'IV suivi du bloc chiffré
 
-            print(f"✅ Super bloc {index} chiffré et réécrit dans `output_file`.")
+            print(f" Super bloc {index} chiffré et réécrit dans `output_file`.")
 
     return encrypted_super_blocks
 
