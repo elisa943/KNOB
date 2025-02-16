@@ -94,7 +94,7 @@ def encrypt_super_blocks(super_blocks, key, super_block_indices, output_file):
             encrypted_block = cipher.encrypt(block)
             encrypted_super_blocks.append((iv, encrypted_block))
 
-            # 🔥 Mise à jour du fichier `output_file` avec les super-blocs chiffrés
+            #  Mise à jour du fichier `output_file` avec les super-blocs chiffrés
             f.seek(index * BLOCK_SIZE)  # Se placer au bon emplacement du super-bloc
             f.write(iv + encrypted_block)  # Écrire l'IV suivi du bloc chiffré
 
