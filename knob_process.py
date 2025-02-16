@@ -25,12 +25,10 @@ def encrypt_file(input_file, output_file):
     """Chiffre un fichier avec AES-256 en mode CBC."""
     # Générer un vecteur d'initialisation (IV) de 16 octets
     iv = get_random_bytes(16)
-
     # Ouvrir les fichiers d'entrée et de sortie
     with open(input_file, 'rb') as infile, open(output_file, 'wb') as outfile:
         # Écrire le vecteur d'initialisation au début du fichier de sortie
         outfile.write(iv)
-
         # Initialiser le chiffrement
         cipher = AES.new(file_key, AES.MODE_CBC, iv)
 
@@ -61,8 +59,6 @@ def divide_into_blocks(ciphertext_file):
 
     return blocks
 
-
-
 def identify_super_blocks(blocks, num_super_blocks):
     """Sélectionne un nombre donné de super blocs de manière plus aléatoire."""
     num_blocks = len(blocks)
@@ -80,11 +76,9 @@ def identify_super_blocks(blocks, num_super_blocks):
     # Sélectionner les premiers `num_super_blocks` après mélange
     return indices[:num_super_blocks]
 
-
 def encrypt_super_blocks(super_blocks, key):
     """Chiffre les super blocs sélectionnés avec AES-256-CBC."""
     encrypted_super_blocks = []
-    ivs = []
 
     for block in super_blocks:
         iv = get_random_bytes(16)  # IV unique pour chaque super bloc
@@ -97,6 +91,7 @@ def encrypt_super_blocks(super_blocks, key):
 
         encrypted_block = cipher.encrypt(block)
         encrypted_super_blocks.append((iv, encrypted_block))
+        print("Super bloc chiffré : ", encrypted_block[:16])
 
     return encrypted_super_blocks
 
@@ -105,7 +100,6 @@ def adaptation_indices(num_blocks, super_block_indices) :
     for i in super_block_indices :
         indices[i] = '1'
     return indices
-
 
 def encrypt_superblock_index(indices, key) :
     indices_bytes = indices.encode()
@@ -134,6 +128,7 @@ def main():
 
     # Initialiser la clé FK
     initialize_file_key()
+    print("Premiers octets de FK : ", file_key[:16])
 
     # Étape 1 : Chiffrement du fichier
     encrypt_file(input_file, output_file)
