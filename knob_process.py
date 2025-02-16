@@ -158,8 +158,18 @@ def main():
     super_block_indices = identify_super_blocks(blocks, 2)
     super_blocks = [blocks[i] for i in super_block_indices]
 
-    # Étape 6 : Chiffrement des super blocs avec une clé SK
-    sk_key = get_random_bytes(KEY_SIZE)  # Clé SK générée 
+    # Étape 6 : Chiffrement des super blocs avec GK et mise à jour du fichier
+encrypted_super_blocks = encrypt_super_blocks(super_blocks, gk_key, super_block_indices, output_file)
+
+#  Étape 6.1 : Recalculer MetaFK après modification des super-blocs
+blocks = divide_into_blocks(output_file)  # Lire les blocs mis à jour
+metaFK = compute_xor_metadata(blocks, file_key)  # Recalculer MetaFK
+
+# Sauvegarde de metaFK mis à jour
+with open("metaFK.bin", "wb") as f:
+    f.write(metaFK)
+
+print(" MetaFK recalculé et mis à jour dans metaFK.bin")
 
     # Récupération de GK
     with open("gk_key", "rb") as f:
