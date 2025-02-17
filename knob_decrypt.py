@@ -46,7 +46,7 @@ def aes_decrypt(encrypted_data, key, iv=None):
     
     # Initialiser le déchiffreur AES en mode CBC
     cipher = AES.new(key, AES.MODE_CBC, iv)
-    
+
     # Déchiffrer et retirer le padding
     if (len(cipher_text) % 16 != 0):
         decrypted_data = unpad(cipher.decrypt(cipher_text), AES.block_size)
@@ -55,13 +55,13 @@ def aes_decrypt(encrypted_data, key, iv=None):
     return decrypted_data
 
 def divide_into_blocks(data_blocks, N_blocks): 
+    #print("IV : ", data_blocks[:16])
     data = [] # Blocs de données chiffrées (sans l'IV)
     iv = data_blocks[:16] # Extraire l'IV des premiers 16 octets
     for i in range(N_blocks):
         start = i * BLOCK_SIZE 
         end = (i + 1) * BLOCK_SIZE
-        data.append(data_blocks[start:end])
-
+        data.append(data_blocks[16+start:end+16])
     return data, iv
 
 def get_sk(knob_priv_key, metaSGX):
@@ -72,27 +72,28 @@ def get_sk(knob_priv_key, metaSGX):
 def get_super_blocks_indices(metaIndex, sk):
     """ Récupère les indices des super blocs"""
     super_block_indices_str = aes_decrypt(metaIndex, sk).decode('utf-8') # Caractères de 0 et de 1 pour les super blocs
-    print("Indices des super blocs : ", super_block_indices_str)
-    
+    #print("Indices des super blocs : ", super_block_indices_str)
+    N_blocks = 0
     super_block_indices = []
     for i in range(len(super_block_indices_str)):
+        N_blocks += 1
         if super_block_indices_str[i] == '1':
             print("Super bloc trouvé à l'indice : ", i)
             super_block_indices.append(i)
-    
-    return super_block_indices
+        elif super_block_indices_str[i] != '0':
+            break
+    return super_block_indices, N_blocks - 1
 
-def get_blocks_decrypted(data, super_block_indices, N_blocks, group_key):
-    """ Récupère les blocs déchiffrés"""
-    blocs = b''
+def get_blocks_decrypted(data, super_block_indices, N_blocks, group_key, iv):
+    """ Récupère les blocs déchiffrés """
+    super_blocs = []
     for i in range(N_blocks):
-        if (i not in super_block_indices):
-            blocs += data[i]
-        else: # Déchiffrement du super bloc avec GK 
-            print("Super bloc chiffré : ", data[i][:16]) # //!\\ Attention : blocs incorrects
-            blocs += aes_decrypt(data[i], group_key)
+        if (i in super_block_indices): # Déchiffrement du super bloc avec GK 
+            donnee = aes_decrypt(data[i], group_key, iv)
+            super_blocs.append(donnee)
+            print("Super bloc déchiffré (1 fois) : ", donnee[:16])
 
-    return blocs
+    return super_blocs
 
 def main():
     # Vérification des arguments
@@ -102,12 +103,6 @@ def main():
 
     # Initialisation des fichiers
     data_blocks, metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key = load_files(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
-
-    # Calcul du nombre de blocs
-    N_blocks = (os.path.getsize(sys.argv[1]) + BLOCK_SIZE - 1) // BLOCK_SIZE
-
-    # Segmentation des blocs à partir des données chiffrées
-    data, iv = divide_into_blocks(data_blocks, N_blocks)
     
     # Inverse de la deuxième AONT pour retrouver SK 
     sk = get_sk(knob_priv_key, metaSGX)
@@ -115,23 +110,32 @@ def main():
     # Vérification de meta_SK
     
     # Déduction des indices des super blocs
-    super_block_indices = get_super_blocks_indices(metaIndex, sk)
+    super_block_indices, N_blocks = get_super_blocks_indices(metaIndex, sk)
+
+    # Calcul du nombre de blocs
+    #N_blocks = os.path.getsize((sys.argv[1]) - 16) // BLOCK_SIZE
+
+    # Segmentation des blocs à partir des données chiffrées
+    data, iv = divide_into_blocks(data_blocks, N_blocks)
 
     # Reconstruction des blocs complètement déchiffrés
-    blocs = get_blocks_decrypted(data, super_block_indices, N_blocks, group_key)
-    
+    blocs = get_blocks_decrypted(data, super_block_indices, N_blocks, group_key, iv)
+
+    for index in super_block_indices:
+        data[index] = blocs[super_block_indices.index(index)]
+
     # Inverse de la première AONT pour retrouver FK
     fk = metaFK
     for i in range(len(data)):
         fk = xor_bytes(hashlib.sha256(data[i]).digest(), fk)
-    print("Premiers octets de FK : ", fk[:16])
+    print("FK : ", fk)
     
     # Déchiffrement des blocs avec FK et écriture sur le fichier de sortie 
-    file_plaintext = aes_decrypt(data_blocks, fk)
     
     # Ecriture du fichier de sortie
     with open(sys.argv[8], "wb") as f:
-        f.write(file_plaintext)
+        for i in range(len(data)):
+            f.write(aes_decrypt(data[i], fk, iv))
     
     print("Fichier déchiffré avec succès : ", sys.argv[1], "-> ", sys.argv[8])
 
