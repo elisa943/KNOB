@@ -36,7 +36,7 @@ def load_files(data_blocks_file, metaFK_file, metaSK_file, metaIndex_file, metaS
     
     return data_blocks, metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key
 
-def aes_decrypt(encrypted_data, key, iv=None):
+def aes_decrypt(encrypted_data, key, iv=None, block_size=AES.block_size, unpadd=True, cipher=None):
     # Extraire l'IV des premiers 16 octets
     if (iv is None):
         iv = encrypted_data[:16]
@@ -45,17 +45,15 @@ def aes_decrypt(encrypted_data, key, iv=None):
         cipher_text = encrypted_data
     
     # Initialiser le déchiffreur AES en mode CBC
-    cipher = AES.new(key, AES.MODE_CBC, iv)
+    if cipher is None:
+        cipher = AES.new(key, AES.MODE_CBC, iv)
 
-    # Déchiffrer et retirer le padding
-    if (len(cipher_text) % 16 != 0):
-        decrypted_data = unpad(cipher.decrypt(cipher_text), AES.block_size)
-    else: # Pas besoin de padding
-        decrypted_data = cipher.decrypt(cipher_text)
+    decrypted_data = cipher.decrypt(cipher_text)
+    if unpadd:
+        return unpad(decrypted_data, block_size)
     return decrypted_data
 
 def divide_into_blocks(data_blocks, N_blocks): 
-    #print("IV : ", data_blocks[:16])
     data = [] # Blocs de données chiffrées (sans l'IV)
     iv = data_blocks[:16] # Extraire l'IV des premiers 16 octets
     for i in range(N_blocks):
@@ -72,7 +70,6 @@ def get_sk(knob_priv_key, metaSGX):
 def get_super_blocks_indices(metaIndex, sk):
     """ Récupère les indices des super blocs"""
     super_block_indices_str = aes_decrypt(metaIndex, sk).decode('utf-8') # Caractères de 0 et de 1 pour les super blocs
-    #print("Indices des super blocs : ", super_block_indices_str)
     N_blocks = 0
     super_block_indices = []
     for i in range(len(super_block_indices_str)):
@@ -82,16 +79,13 @@ def get_super_blocks_indices(metaIndex, sk):
             super_block_indices.append(i)
         elif super_block_indices_str[i] != '0':
             break
-    return super_block_indices, N_blocks - 1
+    return super_block_indices, N_blocks
 
-def get_blocks_decrypted(data, super_block_indices, N_blocks, group_key, iv):
+def get_blocks_decrypted(data, super_block_indices, group_key, iv):
     """ Récupère les blocs déchiffrés """
     super_blocs = []
-    for i in range(N_blocks):
-        if (i in super_block_indices): # Déchiffrement du super bloc avec GK 
-            donnee = aes_decrypt(data[i], group_key, iv)
-            super_blocs.append(donnee)
-            print("Super bloc déchiffré (1 fois) : ", donnee[:16])
+    for i in super_block_indices: # Déchiffrement du super bloc avec GK 
+        super_blocs.append(aes_decrypt(data[i], group_key, iv, BLOCK_SIZE, False))
 
     return super_blocs
 
@@ -117,25 +111,30 @@ def main():
 
     # Segmentation des blocs à partir des données chiffrées
     data, iv = divide_into_blocks(data_blocks, N_blocks)
-
+    
     # Reconstruction des blocs complètement déchiffrés
-    blocs = get_blocks_decrypted(data, super_block_indices, N_blocks, group_key, iv)
-
-    for index in super_block_indices:
-        data[index] = blocs[super_block_indices.index(index)]
+    superBlocs = get_blocks_decrypted(data, super_block_indices, group_key, iv)
+    for i in range(len(superBlocs)):
+        data[super_block_indices[i]] = superBlocs[i]
 
     # Inverse de la première AONT pour retrouver FK
     fk = metaFK
     for i in range(len(data)):
         fk = xor_bytes(hashlib.sha256(data[i]).digest(), fk)
-    print("FK : ", fk)
     
     # Déchiffrement des blocs avec FK et écriture sur le fichier de sortie 
     
     # Ecriture du fichier de sortie
     with open(sys.argv[8], "wb") as f:
+        cipher = AES.new(fk, AES.MODE_CBC, iv)
+        
         for i in range(len(data)):
-            f.write(aes_decrypt(data[i], fk, iv))
+            if i < len(data) - 1: # TODO : Gérer le cas où le dernier bloc est de bonne taille BLOCK_SIZE
+                temp = aes_decrypt(data[i], fk, iv, BLOCK_SIZE, False, cipher)
+            else: 
+                temp = aes_decrypt(data[i], fk, iv, BLOCK_SIZE, True, cipher)
+
+            f.write(temp)
     
     print("Fichier déchiffré avec succès : ", sys.argv[1], "-> ", sys.argv[8])
 

@@ -5,6 +5,7 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from xor_metadata import compute_xor_metadata
+from Crypto.Util.Padding import pad
 
 # Constantes
 BLOCK_SIZE = 1024  # Taille de bloc en octets (1 Ko)
@@ -25,7 +26,7 @@ def encrypt_file(input_file, output_file):
     """Chiffre un fichier avec AES-256 en mode CBC."""
     # Générer un vecteur d'initialisation (IV) de 16 octets
     iv = get_random_bytes(16)
-    #print("IV : ", iv)
+
     # Ouvrir les fichiers d'entrée et de sortie
     with open(input_file, 'rb') as infile, open(output_file, 'wb') as outfile:
         # Écrire le vecteur d'initialisation au début du fichier de sortie
@@ -39,24 +40,19 @@ def encrypt_file(input_file, output_file):
             block = infile.read(BLOCK_SIZE)
             if len(block) == 0:
                 break
-            elif len(block) < BLOCK_SIZE != 0:
-                # Ajouter du padding si nécessaire
-                padding_length = BLOCK_SIZE - len(block)
-                block += bytes([padding_length] * padding_length)
 
-            # Chiffrer le bloc et écrire dans le fichier de sortie
+            if len(block) < BLOCK_SIZE:  # Dernier bloc -> on ajoute du padding
+                block = pad(block, BLOCK_SIZE)
+            
             encrypted_block = cipher.encrypt(block)
             outfile.write(encrypted_block)
-    
-    return iv
 
 def divide_into_blocks(ciphertext_file):
     """Divise le fichier chiffré en blocs de taille fixe."""
     blocks = []
     
     with open(ciphertext_file, 'rb') as infile:
-        # Skip l'IV de 16 octets
-        infile.seek(16)
+        iv = infile.read(16)
         
         while True:
             block = infile.read(BLOCK_SIZE)
@@ -64,7 +60,7 @@ def divide_into_blocks(ciphertext_file):
                 break
             blocks.append(block)
 
-    return blocks
+    return iv, blocks
 
 def identify_super_blocks(blocks, num_super_blocks):
     """Sélectionne un nombre donné de super blocs de manière plus aléatoire."""
@@ -89,16 +85,13 @@ def encrypt_super_blocks(super_blocks, key, iv):
 
     for block in super_blocks:
         cipher = AES.new(key, AES.MODE_CBC, iv)
-        
-        # Padding si nécessaire (normalement non)
-        if len(block) % 16 != 0:
-            padding_length = 16 - (len(block) % 16)
-            block += bytes([padding_length] * padding_length)
-
-        encrypted_block = cipher.encrypt(block)
+        if len(block) < BLOCK_SIZE:
+            padded = pad(block, BLOCK_SIZE)
+        else: 
+            padded = block
+        encrypted_block = cipher.encrypt(padded)
         encrypted_super_blocks.append(encrypted_block)
-        #print("Taille de super bloc chiffré : ", len(encrypted_block))
-        #print("Super bloc chiffré (2 fois) : ", encrypted_block[:16])
+
     return encrypted_super_blocks
 
 def adaptation_indices(num_blocks, super_block_indices) :
@@ -107,20 +100,21 @@ def adaptation_indices(num_blocks, super_block_indices) :
         indices[i] = '1'
     return indices
 
-def encrypt_superblock_index(indices, key) :
+def encrypt_superblock_index(indices, key):
     indices_bytes = indices.encode()
 
     iv = get_random_bytes(16)  # IV unique pour chaque super bloc
     cipher = AES.new(key, AES.MODE_CBC, iv)
 
-    # Padding si nécessaire
-    if len(indices_bytes) % 16 != 0:
-        padding_length = 16 - (len(indices_bytes) % 16)
-        indices_bytes += bytes([padding_length] * padding_length)
+    # Padding standard PKCS7
+    if len(indices_bytes) < AES.block_size:
+        padded_indices = pad(indices_bytes, AES.block_size)  
+    else: 
+        padded_indices = indices_bytes
 
-    encrypted_index = cipher.encrypt(indices_bytes)
+    encrypted_index = cipher.encrypt(padded_indices)
 
-    return iv + encrypted_index   
+    return iv + encrypted_index
 
 def remplace_super_block_file(file, indices, super_blocks, N_blocks):
     """ Remplace les super blocs dans le fichier par les nouveaux super blocs """
@@ -149,13 +143,12 @@ def main():
 
     # Initialiser la clé FK
     initialize_file_key()
-    print("FK : ", file_key)
-
+    
     # Étape 1 : Chiffrement du fichier
-    iv = encrypt_file(input_file, output_file)
+    encrypt_file(input_file, output_file)
     
     # Étape 2 : Division en blocs
-    blocks = divide_into_blocks(output_file)
+    iv, blocks = divide_into_blocks(output_file)
 
     # Étape 3 : Formation de metaFK
     metaFK = compute_xor_metadata(blocks, file_key)
@@ -164,19 +157,12 @@ def main():
     with open("metaFK.bin", "wb") as f:
         f.write(metaFK)
     
-    #print("MetaFK généré et stocké dans metaFK.bin")
+    print("MetaFK généré et stocké dans metaFK.bin")
     
     # Étape 4 : Identification des super blocs
     super_block_indices = identify_super_blocks(blocks, 2)
     super_block_indices.sort()
     super_blocks = [blocks[i] for i in super_block_indices]
-
-    #   
-    with open(output_file, "rb") as f:
-        f.seek(16 + super_block_indices[0] * BLOCK_SIZE)
-        print("Super bloc chiffré (1 fois) : ", f.read(16))
-        f.seek(16 + super_block_indices[1] * BLOCK_SIZE)
-        print("Super bloc chiffré (1 fois) : ", f.read(16))
 
     # Étape 6 : Chiffrement des super blocs avec une clé GK
     # Récupération de GK
@@ -193,14 +179,13 @@ def main():
         for encrypted_block in encrypted_super_blocks:
             f.write(encrypted_block)
 
-    #print("MetaSK (super blocs chiffrés) généré et stocké dans metaSK.bin")
+    print("MetaSK (super blocs chiffrés) généré et stocké dans metaSK.bin")
 
     # Affichage des super blocs sélectionnés
     print("Les super blocs sélectionnés sont :", super_block_indices)
 
     # Étape 5 : Chiffrement AES des indices des superblocs
     se_index = "".join(adaptation_indices(len(blocks), super_block_indices))
-    #print("Les indices chiffrés sont :", se_index)
     
     sk_key = get_random_bytes(KEY_SIZE)  # Clé SK générée 
     metaIndex = encrypt_superblock_index(se_index, sk_key)
@@ -208,7 +193,7 @@ def main():
     # Sauvegarde de metaIndex
     with open("metaIndex.bin", "wb") as f:
         f.write(metaIndex)
-    #print("MetaIndex (se_index chiffré) généré et stocké dans metaIndex.bin")
+    print("MetaIndex (se_index chiffré) généré et stocké dans metaIndex.bin")
 
     # Ètape 7 : Chiffrement RSA de la clé SK avec knob-pub-key
     with open("knob-pri-key", "rb") as f:
@@ -221,7 +206,7 @@ def main():
     # Sauvegarde de metaSGX
     with open("metaSGX.bin", "wb") as f:
         f.write(metaSGX)
-    #print("MetaSGX (SK chiffrée) généré et stocké dans metaSGX.bin")
+    print("MetaSGX (SK chiffrée) généré et stocké dans metaSGX.bin")
     
 
 # Point d'entrée du programme
