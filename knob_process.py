@@ -135,11 +135,13 @@ def remplace_super_block_file(file, indices, super_blocks, N_blocks):
 def main():
     # Vérification des arguments
     if len(sys.argv) < 3:
-        print("Usage: python knob_process.py <input_file> <output_file>")
+        print("Usage: python knob_process.py <input_file> <path> <group key>")
         sys.exit(1)
 
     input_file = sys.argv[1]
-    output_file = sys.argv[2]
+    path = sys.argv[2]
+    gk = sys.argv[3]
+    output_file = "output.bin"
 
     # Initialiser la clé FK
     initialize_file_key()
@@ -163,13 +165,15 @@ def main():
     super_block_indices = identify_super_blocks(blocks, 2)
     super_block_indices.sort()
     super_blocks = [blocks[i] for i in super_block_indices]
-
+    
     # Étape 6 : Chiffrement des super blocs avec une clé GK
     # Récupération de GK
-    with open("gk_key", "rb") as f:
+    with open(gk, "rb") as f:
         gk_key = f.read()
 
     encrypted_super_blocks = encrypt_super_blocks(super_blocks, gk_key, iv)
+    for i, super_block in enumerate(encrypted_super_blocks):
+        blocks[super_block_indices[i]] = super_block
     
     # Remplace les super blocs dans le fichier par les nouveaux super blocs
     remplace_super_block_file(output_file, super_block_indices, encrypted_super_blocks, len(blocks))
@@ -208,6 +212,52 @@ def main():
         f.write(metaSGX)
     print("MetaSGX (SK chiffrée) généré et stocké dans metaSGX.bin")
     
+    # Sauvegarde de chaque bloc dans un dossier où chaque bloc est nommé par son indice
+    if not os.path.exists("blocks"):
+        os.makedirs("blocks") 
+
+    if not os.path.exists("super_blocks"):
+        os.makedirs("super_blocks")
+
+    """
+    i_block = 0
+    i_super_block = 0
+    for i in range(len(blocks)):
+        if i in super_block_indices:
+            file = "super_blocks/" + str(i_super_block) + ".bin"
+            i_super_block += 1
+        else: 
+            file = "blocks/" + str(i_block) + ".bin"
+            i_block += 1
+        with open(file, "wb") as f:
+            f.write(blocks[i])
+    """
+
+    i_block = 0
+    i_super_block = 0
+    with open(output_file, "rb") as f:
+        # Sauvegarde de l'IV dans le dossier blocks
+        with open("blocks/iv.bin", "wb") as f_iv:
+            f_iv.write(f.read(16)) # Lecture de l'IV
+        
+        # Sauvegarde de chaque bloc dans un fichier
+        for i in range(len(blocks)):
+            if i in super_block_indices:
+                file = "super_blocks/" + str(i_super_block) + ".bin"
+                i_super_block += 1
+            else: 
+                file = "blocks/" + str(i_block) + ".bin"
+                i_block += 1
+            
+            with open(file, "wb") as f_block:
+                block = f.read(BLOCK_SIZE)
+                f_block.write(block)
+
+    if (i_block + i_super_block) == len(blocks):
+        print("Les blocs ont été sauvegardés dans le dossier blocks et les super blocs dans le dossier super_blocks")
+
+    # Suppression du fichier chiffré
+    os.remove(output_file)
 
 # Point d'entrée du programme
 if __name__ == "__main__":

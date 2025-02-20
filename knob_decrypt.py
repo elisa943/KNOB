@@ -11,10 +11,8 @@ from Crypto.Util.Padding import unpad
 # Constantes
 BLOCK_SIZE = 1024  # Taille de bloc en octets (1 Ko)
 
-def load_files(data_blocks_file, metaFK_file, metaSK_file, metaIndex_file, metaSGX_file, group_key_file, knob_priv_key_file):
+def load_files(metaFK_file, metaSK_file, metaIndex_file, metaSGX_file, group_key_file, knob_priv_key_file):
     """Charge les fichiers nécessaires pour le déchiffrement."""
-    with open(data_blocks_file, "rb") as f_data:
-        data_blocks = f_data.read()
     
     with open(metaFK_file, "rb") as f_metaFK:
         metaFK = f_metaFK.read()
@@ -34,7 +32,42 @@ def load_files(data_blocks_file, metaFK_file, metaSK_file, metaIndex_file, metaS
     with open(knob_priv_key_file, "rb") as f_kpk:
         knob_priv_key = RSA.import_key(f_kpk.read())
     
-    return data_blocks, metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key
+    return metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key
+
+def load_data(path, super_block_indices, N_blocks):
+    """Récupère tous les fichiers du dossier path/blocks et path/super_blocks pour reconstituer les données chiffrées."""
+    if not (os.path.exists("super_blocks") and os.path.exists("blocks")):
+        print("Les dossiers super_blocks et blocks n'existent pas.")
+        sys.exit(1)
+    
+    # Nombre de blocs et de super blocs
+    N_super_blocks = len(super_block_indices)
+
+    # Récupérer les fichiers des super blocs
+    super_blocks = []
+    for i in range(N_super_blocks):
+        file = path + "/super_blocks/" + str(i) + ".bin"
+        with open(file, "rb") as f:
+            super_blocks.append(f.read())
+    
+    data_blocks = []
+    i_block = 0
+    i_super_block = 0
+    for i in range(N_blocks):
+        if i in super_block_indices:
+            data_blocks.append(super_blocks[i_super_block])
+            i_super_block += 1
+        else:
+            file = path + "/blocks/" + str(i_block) + ".bin"
+            with open(file, "rb") as f:
+                data_blocks.append(f.read())
+            i_block += 1
+    
+    # Récupération de l'IV
+    with open(path + "/blocks/iv.bin", "rb") as f:
+        iv = f.read()
+    
+    return iv, data_blocks
 
 def aes_decrypt(encrypted_data, key, iv=None, block_size=AES.block_size, unpadd=True, cipher=None):
     # Extraire l'IV des premiers 16 octets
@@ -92,11 +125,11 @@ def get_blocks_decrypted(data, super_block_indices, group_key, iv):
 def main():
     # Vérification des arguments
     if len(sys.argv) < 9:
-        print("Usage: python knob_decrypt.py <data blocks> <meta_FK> <meta_SK> <meta_index> <meta_SGX> <group key> <knob-pri-key> <output_file>")
+        print("Usage: python knob_decrypt.py <path> <meta_FK> <meta_SK> <meta_index> <meta_SGX> <group key> <knob-pri-key> <output_file>")
         sys.exit(1)
 
     # Initialisation des fichiers
-    data_blocks, metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key = load_files(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
+    metaFK, metaSK, metaIndex, metaSGX, group_key, knob_priv_key = load_files(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
     
     # Inverse de la deuxième AONT pour retrouver SK 
     sk = get_sk(knob_priv_key, metaSGX)
@@ -106,11 +139,11 @@ def main():
     # Déduction des indices des super blocs
     super_block_indices, N_blocks = get_super_blocks_indices(metaIndex, sk)
 
-    # Calcul du nombre de blocs
-    #N_blocks = os.path.getsize((sys.argv[1]) - 16) // BLOCK_SIZE
+    # TODO 
+    iv, data = load_data(sys.argv[1], super_block_indices, N_blocks)
 
     # Segmentation des blocs à partir des données chiffrées
-    data, iv = divide_into_blocks(data_blocks, N_blocks)
+    #data, iv = divide_into_blocks(data_blocks, N_blocks)
     
     # Reconstruction des blocs complètement déchiffrés
     superBlocs = get_blocks_decrypted(data, super_block_indices, group_key, iv)
@@ -136,7 +169,7 @@ def main():
 
             f.write(temp)
     
-    print("Fichier déchiffré avec succès : ", sys.argv[1], "-> ", sys.argv[8])
+    print("Fichier déchiffré avec succès -> ", sys.argv[8])
 
 # Point d'entrée du programme
 if __name__ == "__main__":
