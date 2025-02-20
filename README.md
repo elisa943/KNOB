@@ -1,12 +1,12 @@
 # KNOB
 ## Chiffrement KNOB
 ```
-python knob_process.py input.txt . gk_key
+python encryption_service.py input.txt . gk_key
 ```
 
 ## Déchiffrement KNOB
 ```
-python knob_decrypt.py . metaFK.bin metaSK.bin metaIndex.bin metaSGX.bin gk_key knob-pri-key output.txt
+python decryption_service.py . metaFK.bin metaSK.bin metaIndex.bin metaSGX.bin gk_key knob-pri-key output.txt
 ```
 
 ## RSA | Guide pour utiliser RSA
