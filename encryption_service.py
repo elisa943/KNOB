@@ -7,6 +7,22 @@ from Crypto.Random import get_random_bytes
 from xor_metadata import compute_xor_metadata
 from Crypto.Util.Padding import pad
 
+import requests
+
+API_URL = "http://api-server-address"
+API_KEY = "1234567890abcdef"
+
+def send_to_api(endpoint, data):
+    """Envoie les fichiers et métadonnées vers l'API REST."""
+    headers = {"X-API-KEY": API_KEY}
+    response = requests.post(f"{API_URL}{endpoint}", headers=headers, files=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Erreur lors de l'envoi des données à {endpoint}: {response.text}")
+        sys.exit(1)
+
+
 # Constantes
 BLOCK_SIZE = 1024  # Taille de bloc en octets (1 Ko)
 KEY_SIZE = 32      # Taille de clé (256 bits)
@@ -155,11 +171,7 @@ def main():
     # Étape 3 : Formation de metaFK
     metaFK = compute_xor_metadata(blocks, file_key)
 
-    # Sauvegarde de metaFK
-    with open("metaFK.bin", "wb") as f:
-        f.write(metaFK)
     
-    print("MetaFK généré et stocké dans metaFK.bin")
     
     # Étape 4 : Identification des super blocs
     super_block_indices = identify_super_blocks(blocks, 2)
@@ -178,12 +190,7 @@ def main():
     # Remplace les super blocs dans le fichier par les nouveaux super blocs
     remplace_super_block_file(output_file, super_block_indices, encrypted_super_blocks, len(blocks))
 
-    # Sauvegarde de metaSK avec les IV
-    with open("metaSK.bin", "wb") as f:
-        for encrypted_block in encrypted_super_blocks:
-            f.write(encrypted_block)
-
-    print("MetaSK (super blocs chiffrés) généré et stocké dans metaSK.bin")
+    
 
     # Affichage des super blocs sélectionnés
     print("Les super blocs sélectionnés sont :", super_block_indices)
@@ -194,10 +201,7 @@ def main():
     sk_key = get_random_bytes(KEY_SIZE)  # Clé SK générée 
     metaIndex = encrypt_superblock_index(se_index, sk_key)
 
-    # Sauvegarde de metaIndex
-    with open("metaIndex.bin", "wb") as f:
-        f.write(metaIndex)
-    print("MetaIndex (se_index chiffré) généré et stocké dans metaIndex.bin")
+    
 
     # Ètape 7 : Chiffrement RSA de la clé SK avec knob-pub-key
     with open("knob-pri-key", "rb") as f:
@@ -207,10 +211,7 @@ def main():
     cipher_rsa = PKCS1_OAEP.new(knob_pub_key)
     metaSGX = cipher_rsa.encrypt(sk_key)
 
-    # Sauvegarde de metaSGX
-    with open("metaSGX.bin", "wb") as f:
-        f.write(metaSGX)
-    print("MetaSGX (SK chiffrée) généré et stocké dans metaSGX.bin")
+    
     
     # Sauvegarde de chaque bloc dans un dossier où chaque bloc est nommé par son indice
     if not os.path.exists("blocks"):
@@ -255,6 +256,25 @@ def main():
 
     if (i_block + i_super_block) == len(blocks):
         print("Les blocs ont été sauvegardés dans le dossier blocks et les super blocs dans le dossier super_blocks")
+
+    # Envoi du fichier chiffré à l'API et récupération du file_id
+    encrypted_data = b"".join(blocks)
+    response = send_to_api("/upload", {"file": ("encrypted_file.bin", encrypted_data)})
+    file_id = response["file_id"]
+
+    # Envoi des métadonnées à l’API
+    metadata = {
+        "file_id": file_id,
+        "metaFK": metaFK,
+        "metaSK": b''.join(encrypted_super_blocks),
+        "metaIndex": metaIndex,
+        "metaSGX": metaSGX
+    }
+
+    send_to_api("/store_metadata", {"metadata": ("metadata.bin", str(metadata).encode())})
+
+    print(f"Fichier {input_file} chiffré et stocké avec succès. File ID: {file_id}")
+
 
     # Suppression du fichier chiffré
     os.remove(output_file)
