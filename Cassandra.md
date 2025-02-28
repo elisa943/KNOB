@@ -13,7 +13,7 @@ sudo curl -o /etc/apt/keyrings/apache-cassandra.asc https://downloads.apache.org
 echo "deb [signed-by=/etc/apt/keyrings/apache-cassandra.asc] https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 ```
 
-### **Mise à jour**
+### **Mise à jour et installation de Cassandra**
 ```bash
 sudo apt-get update
 sudo apt-get install cassandra -y
