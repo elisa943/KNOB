@@ -13,7 +13,7 @@ sudo curl -o /etc/apt/keyrings/apache-cassandra.asc https://downloads.apache.org
 echo "deb [signed-by=/etc/apt/keyrings/apache-cassandra.asc] https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 ```
 
-### **Mise à jour et installation de Cassandra**
+### **Mise à jour**
 ```bash
 sudo apt-get update
 sudo apt-get install cassandra -y
@@ -56,7 +56,7 @@ Le fichier principal de configuration de Cassandra est :
 | `rpc_address` | Adresse d'écoute pour les clients.  |
 | `seed_provider` | Liste des **nœuds SEED** pour initialiser le cluster |
 
-### 🔹 **Mise à jour du fichier `cassandra.yaml`**
+### **Mise à jour du fichier `cassandra.yaml`**
 Exemple de configuration **à faire sur chaque VM** :
 ```yaml
 cluster_name: "KnobCluster"
