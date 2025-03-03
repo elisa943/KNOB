@@ -24,7 +24,11 @@ sudo apt-get install cassandra -y
 sudo systemctl start cassandra
 sudo systemctl status cassandra
 ```
-
+### **Arrêter et redémarrer Cassandra**
+```bash
+sudo systemctl stop cassandra
+sudo systemctl start cassandra
+```
 ---
 
 ## **Résolution de l'erreur "Exited" après installation**
@@ -150,11 +154,22 @@ VALUES (uuid(), 0x48656C6C6F20576F726C64, 'Encrypted file example');
 ```cqlsh
 SELECT * FROM data_keyspace.file_blocks;
 ```
+---
 
-### **Arrêter et redémarrer Cassandra**
-```bash
-sudo systemctl stop cassandra
-sudo systemctl start cassandra
-```
+## **Récapitulatif des Keyspaces et Tables**
+
+| Keyspace        | Tables                          | Description |
+|----------------|--------------------------------|-------------|
+| **data_keyspace**  | `file_blocks`               | Stocke les blocs de fichiers chiffrés |
+|                | `files`                        | Métadonnées des fichiers |
+|                | `super_blocks`                 | Contient les super-blocs pour le re-chiffrement |
+| **meta_keyspace**  | `file_metadata`             | Stocke les métadonnées des fichiers, clés FK et SK |
+|                | `group_keys`                   | Stocke GK et GK' pour la gestion des accès |
+|                | `reencryption_tasks`           | Suivi des tâches de re-chiffrement |
+|                | `super_block_index`            | Index des super-blocs pour re-chiffrement sécurisé |
+
+---
+
+
 
 ---
