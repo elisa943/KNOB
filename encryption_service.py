@@ -170,8 +170,6 @@ def main():
 
     # Étape 3 : Formation de metaFK
     metaFK = compute_xor_metadata(blocks, file_key)
-
-    
     
     # Étape 4 : Identification des super blocs
     super_block_indices = identify_super_blocks(blocks, 2)
@@ -190,8 +188,6 @@ def main():
     # Remplace les super blocs dans le fichier par les nouveaux super blocs
     remplace_super_block_file(output_file, super_block_indices, encrypted_super_blocks, len(blocks))
 
-    
-
     # Affichage des super blocs sélectionnés
     print("Les super blocs sélectionnés sont :", super_block_indices)
 
@@ -201,8 +197,6 @@ def main():
     sk_key = get_random_bytes(KEY_SIZE)  # Clé SK générée 
     metaIndex = encrypt_superblock_index(se_index, sk_key)
 
-    
-
     # Ètape 7 : Chiffrement RSA de la clé SK avec knob-pub-key
     with open("knob-pri-key", "rb") as f:
         knob_pri_key = RSA.import_key(f.read())
@@ -210,8 +204,6 @@ def main():
     knob_pub_key = knob_pri_key.publickey() 
     cipher_rsa = PKCS1_OAEP.new(knob_pub_key)
     metaSGX = cipher_rsa.encrypt(sk_key)
-
-    
     
     # Sauvegarde de chaque bloc dans un dossier où chaque bloc est nommé par son indice
     if not os.path.exists("blocks"):
@@ -266,7 +258,7 @@ def main():
     metadata = {
         "file_id": file_id,
         "metaFK": metaFK,
-        "metaSK": b''.join(encrypted_super_blocks),
+        "metaSK": b''.join(encrypted_super_blocks), # TODO : ???? on est censé faire un XOR 
         "metaIndex": metaIndex,
         "metaSGX": metaSGX
     }

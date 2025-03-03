@@ -134,12 +134,12 @@ def main():
     # Inverse de la deuxième AONT pour retrouver SK 
     sk = get_sk(knob_priv_key, metaSGX)
     
-    # Vérification de meta_SK
+    # TODO : Vérification de meta_SK
     
     # Déduction des indices des super blocs
     super_block_indices, N_blocks = get_super_blocks_indices(metaIndex, sk)
 
-    # TODO 
+    # TODO : optimiser tout ça 
     iv, data = load_data(sys.argv[1], super_block_indices, N_blocks)
 
     # Segmentation des blocs à partir des données chiffrées
