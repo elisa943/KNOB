@@ -4,7 +4,6 @@ from Crypto.Signature import PKCS1_PSS
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-
 # --- Fonctions auxiliaires ---
 def load_file(file):
     """ Charge un fichier """
@@ -17,7 +16,6 @@ def load_key(file):
         return RSA.import_key(f.read())
 
 # --- Fonctions ---
-
 def decrypt_group_keys(meta_task, admin_key, knob_pri_key):
     """ Récupère l'ancienne et la nouvelle clé de groupe """
     meta_task = load_file(meta_task)
