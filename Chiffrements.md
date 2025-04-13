@@ -15,7 +15,7 @@ Les blocs du fichier chiffré sont envoyés dans Cassandra, tout comme son `file
 ```bash
 python3 decryption.py [file_id]
 ```
-Si le `file_id`n'est pas précisé, le script demande à l'utilisateur de l'écrire sur la console. 
+Si le `file_id` n'est pas précisé, le script demande à l'utilisateur de l'écrire sur la console. 
 
 Pour l'instant, les clés de groupe sont récupérées dans le dossier `keys`. 
 
@@ -30,4 +30,19 @@ python3 reencryption.py [file_id] [knob_pri_key]
 
 ATTENTION : 
 - l'argument `[knob_pri_key]` correspond **exactement** à la clé `knob_pri_key` et non pas au chemin menant au fichier contenant la clé. 
-- la commande `python3 reencryption.py [knob_pri_key]` ne fonctionnera pas car le script considèrera que la `knob-pri-key` est le `file_id`. Autrement dit, il faut bien respecter l'ordre. 
+- la commande `python3 reencryption.py [knob_pri_key]` ne fonctionnera pas car le script considèrera que la `knob-pri-key` est le `file_id`. Autrement dit, il faut bien respecter l'ordre.
+
+
+# Méthode classique 
+Les scripts sont dans le dossier ~/classic-method 
+
+## Chiffrement 
+
+```bash
+python3 encrypt_classic.py [file] [encrypted-file-name]
+```
+
+## Déchiffremment 
+```bash
+python3 decrypt_classic.py [encrypted-file-name] [output-file]
+```
